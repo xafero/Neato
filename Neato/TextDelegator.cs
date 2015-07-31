@@ -103,10 +103,25 @@ namespace Neato
 					case "push":
 						dispatch.BeginInvoke((Action)(() => ExecutePush(parts)));
 						break;
+					case "purge":
+						dispatch.BeginInvoke((Action)(() => ExecutePurge(parts)));
+						break;
 					default:
 						throw new NotImplementedException(cmd+"!");
 				}
 			}
+		}
+		
+		private void ExecutePurge(string[] parts)
+		{
+			var args = parts.Skip(1).First();
+			var myObjs = objectDump.Where(o => o.GetType().Name == args).ToArray();
+			Array.ForEach(myObjs, i => objectDump.Remove(i));
+			var newest = myObjs.LastOrDefault();
+			if (newest != null)
+				objectDump.Add(newest);
+			var count = Math.Max(0, myObjs.Length-1);
+			Console.WriteLine("Purged {0} items.", count);
 		}
 		
 		private void ExecutePush(string[] parts)
@@ -120,7 +135,9 @@ namespace Neato
 				Console.Error.WriteLine("Object '{0}' doesn't exist!", args[0]);
 				return;
 			}
-			var myVal = value;
+			object myVal = value;
+			if (value.ToCharArray().First() == '#')
+				myVal = objectDump.FirstOrDefault(o => o.GetType().Name == value.Substring(1));
 			myObj.GetType().GetProperty(nameParts[1]).SetValue(myObj, myVal);
 			Console.WriteLine("Pushed '{0}' as '{1}' into '{2}'.", myVal, nameParts[1], myObj);
 		}
@@ -131,13 +148,21 @@ namespace Neato
 			var tmp = windows.ToArray();
 			Console.WriteLine("Refreshed {0} windows.", tmp.Length);
 			var args = parts.Skip(1).First().Split('/');
-			var myObj = windows.FirstOrDefault(o => o.GetType().Name == args[0]);
+			var myObj = windows.Concat(objectDump).FirstOrDefault(o => o.GetType().Name == args[0]);
 			if (myObj == null)
 			{
 				Console.Error.WriteLine("Object '{0}' doesn't exist!", args[0]);
 				return;
 			}
-			var myVal = myObj.GetType().GetProperty(args[1]).GetValue(myObj);
+			var propParts = args[1].Split(new [] {'|'}, 2);
+			var propName = propParts[0];
+			var myVal = myObj.GetType().GetProperty(propName).GetValue(myObj);
+			if (propParts.Length >= 2)
+			{
+				var propIdx = int.Parse(propParts[1]);
+				var items = ((IEnumerable)myVal).OfType<object>();
+				myVal = items.Skip(propIdx).Take(1).Single();
+			}
 			objectDump.Add(myVal);
 			Console.WriteLine("Pulled '{0}' from '{1}'.", myVal, myObj);
 		}
@@ -154,9 +179,13 @@ namespace Neato
 				Console.Error.WriteLine("Object '{0}' doesn't exist!", args[0]);
 				return;
 			}
-			var myCmd = myObj.GetType().GetProperty(args[1]).GetValue(myObj);
+			var paramParts = args[1].Split(' ');
+			var myCmd = myObj.GetType().GetProperty(paramParts[0]).GetValue(myObj);
 			var cmdMeth = myCmd.GetType().GetMethod("Execute");
-			cmdMeth.Invoke(myCmd, new object[] { null });
+			object param = null;
+			if (paramParts.Length >= 2)
+				param = objectDump.FirstOrDefault(o => o.GetType().Name == paramParts[1]);
+			cmdMeth.Invoke(myCmd, new object[] { param });
 			Console.WriteLine("Executed '{0}' from '{1}'.", myCmd, myObj);
 		}
 		
