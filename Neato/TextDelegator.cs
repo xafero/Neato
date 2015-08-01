@@ -11,6 +11,9 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Proc = System.Diagnostics.Process;
+
+using ManagedWinapi.Windows;
 
 namespace Neato
 {
@@ -106,10 +109,36 @@ namespace Neato
 					case "purge":
 						dispatch.BeginInvoke((Action)(() => ExecutePurge(parts)));
 						break;
+					case "find":
+						dispatch.BeginInvoke((Action)(() => ExecuteFind(parts)));
+						break;
+					case "click":
+						dispatch.BeginInvoke((Action)(() => ExecuteClick(parts)));
+						break;
 					default:
 						throw new NotImplementedException(cmd+"!");
 				}
 			}
+		}
+		
+		private void ExecuteClick(string[] parts)
+		{
+			var args = parts.Skip(1).First();
+			var childWindows = objectDump.OfType<SystemWindow>().SelectMany(w => w.AllDescendantWindows);
+			var button = childWindows.FirstOrDefault(w => w.Title == args);
+			WinInterop.SendClick(button.HWnd);
+			Console.WriteLine("Sent click to '{0}'.", button.HWnd);
+		}
+		
+		private void ExecuteFind(string[] parts)
+		{
+			var args = parts.Skip(1).First();
+			var currentProc = Proc.GetCurrentProcess();
+			var window = SystemWindow.FilterToplevelWindows(p => p.Process.Id == currentProc.Id)
+				.FirstOrDefault(w => w.Title == args);
+			if (window != null)
+				objectDump.Add(window);
+			Console.WriteLine("Found window '{0}'.", window);
 		}
 		
 		private void ExecutePurge(string[] parts)
